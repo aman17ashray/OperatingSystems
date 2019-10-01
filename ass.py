@@ -32,7 +32,7 @@ def allocate(proc_id,time):
     if ramidx < ram_size:
         while ramidx < ram_size and vpn<npages:
             p=page(vpn,proc_id)
-            ram[ramidx]=[p,time]
+            ram[ramidx]=[p,-1]
             page_table[proc_id][vpn].ppn=ramidx
             page_table[proc_id][vpn].present=True
             page_table[proc_id][vpn].valid=True
@@ -41,54 +41,135 @@ def allocate(proc_id,time):
 
     # if vpn<npages:
     #     while vpn<npages:
-    #         minidx=0          
+    #         minidx=0           
     #         for ppn in range(int(ram_size/page_size)):
     #             if ram[ppn][1]<ram[minidx][1]:
     #                 minidx=ppn
-           
-                     
-def mem_access(proc_id,query,time,var):
-    if swap_policy=="LRU":
-        print(1)  
-    elif swap_policy=="FIFO":
-        print("hello")
-    elif swap_policy == "Opti":
-        # query is virtual page number
-        # to check if its not present in TLB
-        hit = False
-        for item in tlb:
-            if item[1] == query and item[0] == proc_id:
-                print("TLB HIT")
-                hit = True
-        if not hit:
-            # find the one which'll not be accessed soon
-            # for each element i need to find when do i need this and remove the one needed too later
-            temp = []
-            for item in tlb:
-                # to find when this is needed next
-                flag = -1
-                for que,i in enumerate(proc_queries):
-                    if que == [proc_id,query]:
-                        flag = i
-                        break
-                temp.append(flag)
-                if(flag == -1):
-                    # this is to be removed
-                    
+ 
+ #returns the element with minimum time to eliminate it
+def entry_to_be_expelled(mem_type):
+    global curr
+    global queries
+    global swap_policy
+    if mem_type==1:
+        mem_structure=tlb
+        size = int(tlb_size)
+    else: # 
+        mem_structure=ram
+        size = int(ram_size)
+    #print(mem_structure[0])
+    min_ele=0
+    min_time=mem_structure[0][1]
+    '''
+    for OPTIMAL
+    '''
+    if swap_policy == "OPTI":
+    # find the one which'll not be accessed soon
+    # for each element i need to find when do i need this and remove the one needed too later
+        temp = []
+        #if mem_type == 1: #TLB
+        for j in range(len(mem_structure)):
+            flag = -1
+            for i in range(curr,size): # current is the index of current query made
+                if mem_structure[j][0].pid == queries[i][0] and mem_structure[j][0].vpn == queries[i][1]:
+                    flag = i
+                    temp.append(flag)
+                    break
+            if flag == -1:
+                return j
+        # else find the max
+        maxx = temp[0]
+        maxindex = 0
+        for i in range(len(temp)):
+            if temp[i] > maxx:
+                maxx = temp[i]
+                maxindex = i
+        return maxindex
+        
+
+    for i in range(size):
+        if mem_type==1:#its tlb
+            if not(mem_structure[i][0].present and mem_structure[i][0].valid):#we have a entry no longer in ram
+                return i
+        if mem_structure[i][0].pid!=-1:#valid entry
+            if mem_structure[i][1]<min_time:
+                #print(mem_structure[i][1],min_time)
+                min_time = mem_structure[i][1]
+                min_ele=i
+    #print("from outside",min_ele)
+    return min_ele
+                      
+def tlb_access(proc_id,query,time):
+    global tlb_size
+    global tlbidx
+    global tlb_policy
+    #assuming TLB is filled initially
+    for i in range(tlb_size):
+        if tlb[i][0].pid==proc_id and tlb[i][0].vpn==query:
+            #changing time at tlb and ram
+            if tlb_policy=="LRU":
+                tlb[i][1]=time
+            if swap_policy=="LRU":
+                ram[tlb[i][0].ppn][1]=time
+            elif ram[tlb[i][0].ppn][1]==-1:
+                ram[tlb[i][0].ppn][1]=time
+            return
+    #not found in TLB
+    ppn = mem_access(proc_id,query,time)#returns the ppn
+    #print(ppn)
+    if ppn==-1:
+        return
+    #print(tlbidx," ",tlb_size)
+    if tlbidx<tlb_size:
+        tlb[tlbidx]=[TE(query,ppn,proc_id),time]
+        tlb[tlbidx][0].present=True;
+        tlb[tlbidx][0].valid=True;
+        tlbidx+=1
+    else:
+        #enter swapping policies here
+        temp = entry_to_be_expelled(1)
+        print(temp, " is temp")
+        tlb[temp] = [TE(query,ppn,proc_id),time]
+
+
+def mem_access(proc_id,query,time):
+    #first we search the process table
+    global swap_policy
+    print("memory accessed")
+    if proc_id not in page_table.keys():
+        print(proc_id+"    "+"invalid process id")
+        return -1
+    if query not in range(len(page_table[proc_id])):
+        print(proc_id+" "+"invalid vpn id")
+        return -1
+    if page_table[proc_id][query].present:
+        #page is present in memory
+        ppn = page_table[proc_id][query].ppn
+        if swap_policy == "FIFO":
+            if(ram[ppn][1]==-1):
+                ram[ppn][1] = time
+        elif swap_policy == "LRU":
+            ram[ppn][1] = time
+        elif swap_policy == "OPTI":
+            ram[ppn][1] = time
+        return page_table[proc_id][query].ppn
+    else:#entry is in the swap space
+    #else page is outside of memory
+    #swap from swap space
+        print("swap")
 
 
 
-
-   
-page_size=4
-ram_size=64
+page_size=1
+ram_size=16
 swap_size=128
 tlb_size=4
-tlb_policy="FIFO"
-swap_policy="FIFO"
+tlb_policy="OPTI"
+swap_policy="OPTI"
 proc_req=dict()
 alloted=dict()
 page_table=dict()
+tlbidx=0
 ramidx=0
 swapidx=0
        
@@ -114,7 +195,7 @@ if __name__=="__main__":
     if swap_size%page_size!=0:
         print("swap size should be multiple of page size")
    
-    file1=open("sample inputfile1.txt","r")
+    file1=open("sample_process.txt","r")
    
     for a in file1.read().split('\n'):
         proc_id=int(a.split()[0])
@@ -122,10 +203,13 @@ if __name__=="__main__":
         proc_req[proc_id]=procsize
         alloted[proc_id]=-1
        
-    file2=open("sample inputfile2.txt","r")
+    file2=open("sample_access.txt","r")
     time=0
+    curr = 0
+    queries = []    
     for a in file2.read().split('\n'):
         time+=1
+        curr += 1
         proc_id=int(a.split()[0])
         query=int(a.split()[1])
         if proc_id not in proc_req.keys():
@@ -135,9 +219,18 @@ if __name__=="__main__":
             print(a+"    "+"query element is beyond allocated process size")
             continue
         if alloted[proc_id]==-1:
-            error=allocate(proc_id,time)
+            allocate(proc_id,time)
+            alloted[proc_id]=1
+        queries.append([proc_id,query])
+        print(queries[-1])
+        tlb_access(proc_id,query,time)
+    for t in tlb:
+        print(t[0].pid,t[0].vpn,t[1])
+    print("RAM structure")
     for r in ram:
         print(r[0].pid, r[1])
+    # for t in tlb:
+    #     print(t[0].pid,t[0].vpn)
     print("done")
 #            if not error:
 #                mem_access(proc_id,query,time,True)
