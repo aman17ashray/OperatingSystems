@@ -24,36 +24,70 @@ def allocate(proc_id,time):
     size=proc_req[proc_id]
     if size>ram_size:
         print("size required for process bigger than ram size")
-        return 1
+        return -1
+    if size > (ram_size-ramidx*page_size)+(swap_size-swapidx*page_size):#available remaining space
+        print("not enough space left for the process")
+        return -1
     npages=int(math.ceil(size/page_size))
     if proc_id not in page_table.keys():
         page_table[proc_id]=[TE(i,-1,proc_id) for i in range(npages)]
     vpn=0
-    if ramidx < ram_size:
-        while ramidx < ram_size and vpn<npages:
-            p=page(vpn,proc_id)
-            ram[ramidx]=[p,-1]
-            page_table[proc_id][vpn].ppn=ramidx
-            page_table[proc_id][vpn].present=True
-            page_table[proc_id][vpn].valid=True
-            ramidx+=page_size
-            vpn+=1
+    #first filling all the free entries
+    while ramidx < ram_size/page_size and vpn<npages:
+        p=page(vpn,proc_id)
+        ram[ramidx]=[p,time]
+        page_table[proc_id][vpn].ppn=ramidx
+        page_table[proc_id][vpn].present=True
+        page_table[proc_id][vpn].valid=True
+        ramidx+=1
+        vpn+=1
+    #then if something is left using swap space for that
+    while vpn<npages:
+        p=page(vpn,proc_id)
+        expel = entry_to_be_expelled(2)#getting the entry to be expelled
+        temp = ram[expel][0]#temporarily storing entry to be expelled
+        ram[expel] = [p,time]
+        page_table[proc_id][vpn].ppn=expel
+        page_table[proc_id][vpn].present=True
+        page_table[proc_id][vpn].valid=True
+        vpn+=1
+        #now add the expelled page to swap size
+        add_to_swap(temp)
 
-    # if vpn<npages:
-    #     while vpn<npages:
-    #         minidx=0           
-    #         for ppn in range(int(ram_size/page_size)):
-    #             if ram[ppn][1]<ram[minidx][1]:
-    #                 minidx=ppn
+#now defining the adding to swap function
+def add_to_swap(temp_page):
+    global swapidx
+    swap[swapidx]=temp_page
+    swapidx+=1
+    #now changing the pagetable and tlb present bits
+    page_table[temp_page.pid][temp_page.vpn].present=False
+    for i in tlb:
+        if i[0].pid==temp_page.pid and i[0].vpn == temp_page.vpn:
+            i[0].present=False
+
+def exchange_in_swap(entry,exit):
+    for i in range(int(swap_size/page_size)):
+        if swap[i].pid==exit.pid and swap[i].vpn == exit.vpn:
+            swap[i] = entry
+            #now changing the pagetable and tlb present bits
+            page_table[entry.pid][entry.vpn].present=False
+            for j in tlb:
+                if j[0].pid==entry.pid and j[0].vpn == entry.vpn:
+                    j[0].present=False
+            return
+    print("Swap not successfull, page lost")
+
+
+
  
- #returns the element with minimum time to eliminate it
+#returns the element with minimum time to eliminate it
 def entry_to_be_expelled(mem_type):
     if mem_type==1:
         mem_structure=tlb
         size = int(tlb_size)
     else:
         mem_structure=ram
-        size = int(ram_size)
+        size = int(ram_size/page_size)
     #print(mem_structure[0])
     min_ele=0
     min_time=mem_structure[0][1]
@@ -75,7 +109,7 @@ def tlb_access(proc_id,query,time):
     global tlb_policy
     #assuming TLB is filled initially
     for i in range(tlb_size):
-        if tlb[i][0].pid==proc_id and tlb[i][0].vpn==query:
+        if tlb[i][0].pid==proc_id and tlb[i][0].vpn==query and tlb[i][0].present and tlb[i][0].valid:
             #changing time at tlb and ram
             if tlb_policy=="LRU":
                 tlb[i][1]=time
@@ -98,8 +132,10 @@ def tlb_access(proc_id,query,time):
     else:
         #enter swapping policies here
         temp = entry_to_be_expelled(1)
-        print(temp)
+        #print(temp)
         tlb[temp] = [TE(query,ppn,proc_id),time]
+        tlb[temp][0].valid=True
+        tlb[temp][0].present=True
 
 
 def mem_access(proc_id,query,time):
@@ -110,7 +146,7 @@ def mem_access(proc_id,query,time):
         print(proc_id+"    "+"invalid process id")
         return -1
     if query not in range(len(page_table[proc_id])):
-        print(proc_id+" "+"invalid vpn id")
+        print("invalid vpn id for process",proc_id,query)
         return -1
     if page_table[proc_id][query].present:
         #page is present in memory
@@ -122,18 +158,23 @@ def mem_access(proc_id,query,time):
             ram[ppn][1]=time
         return page_table[proc_id][query].ppn
     else:#entry is in the swap space
-    #else page is outside of memory
-    #swap from swap space
+        expel = entry_to_be_expelled(2)
+        temp = ram[expel][0]#temporarily storing entry to be expelled
+        exchange_in_swap(temp,page(proc_id,query))
+        ram[expel] = [page(proc_id,query),time]
+        page_table[proc_id][query].ppn=expel
+        page_table[proc_id][query].present=True
+        page_table[proc_id][query].valid=True
         print("swap")
 
+#def swap_access(proc_id,query)
 
-
-page_size=1
-ram_size=16
-swap_size=128
+page_size=2
+ram_size=12
+swap_size=12
 tlb_size=4
 tlb_policy="FIFO"
-swap_policy="FIFO"
+swap_policy="LRU"
 proc_req=dict()
 alloted=dict()
 page_table=dict()
@@ -142,8 +183,8 @@ ramidx=0
 swapidx=0
        
 tlb=[[TE(-1,-1,-1),-1] for _ in range(tlb_size)]
-ram=[[page(-1,-1),-1] for _ in range(int(ram_size))]#changed array size to include each byte
-swap=[page(-1,-1) for _ in range(int(swap_size))]#change array size to include each byte
+ram=[[page(-1,-1),-1] for _ in range(int(ram_size/page_size))]#changed array size to include each byte
+swap=[page(-1,-1) for _ in range(int(swap_size/page_size))]#change array size to include each byte
 
      
    
@@ -170,9 +211,8 @@ if __name__=="__main__":
         procsize=int(a.split()[1])
         proc_req[proc_id]=procsize
         alloted[proc_id]=-1
-       
+    time = 0
     file2=open("sample_access.txt","r")
-    time=0
     for a in file2.read().split('\n'):
         time+=1
         proc_id=int(a.split()[0])
@@ -189,10 +229,13 @@ if __name__=="__main__":
         print(time)
         tlb_access(proc_id,query,time)
         for t in tlb:
-            print(t[0].pid,t[0].vpn,t[1])
+            print(t[0].pid,t[0].vpn,t[0].present,t[1])
     print("RAM structure")
     for r in ram:
-        print(r[0].pid, r[1])
+        print(r[0].pid,r[0].vpn, r[1])
+    print("Swap structure")
+    for s in swap:
+        print(s.pid,s.vpn)
     # for t in tlb:
     #     print(t[0].pid,t[0].vpn)
     print("done")
