@@ -216,8 +216,8 @@ page_size=2
 ram_size=12
 swap_size=12
 tlb_size=4
-tlb_policy="FIFO"
-swap_policy="LRU"
+tlb_policy="OPTI"
+swap_policy="OPTI"
 proc_req=dict()
 alloted=dict()
 page_table=dict()
@@ -256,15 +256,18 @@ if __name__=="__main__":
         proc_req[proc_id]=procsize
         alloted[proc_id]=-1
     file2=open("sample_access.txt","r")
+
+
+
     file3 = open("sample_access.txt","r")
     time=0
-    curr = 0
-    queries = []
+    queries=[]
     for a in file3.read().split('\n'):
-        n_queries+=1  
+        n_queries+=1
+        queries.append([int(a.split()[0]),int(a.split()[1])])
+    curr=0
     for a in file2.read().split('\n'):
         time+=1
-        curr += 1
         proc_id=int(a.split()[0])
         query=int(a.split()[1])
         if proc_id not in proc_req.keys():
@@ -276,8 +279,7 @@ if __name__=="__main__":
         if alloted[proc_id]==-1:
             allocate(proc_id,time)
             alloted[proc_id]=1
-        queries.append([proc_id,query])
-        print(queries[-1])
+        curr +=1
         tlb_access(proc_id,query,time)
         print("TLB structure")
         for t in tlb:
