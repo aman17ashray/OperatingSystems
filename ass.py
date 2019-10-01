@@ -66,6 +66,7 @@ def add_to_swap(temp_page):
             i[0].present=False
 
 def exchange_in_swap(entry,exit):
+    #print(exit.pid,exit.vpn)
     for i in range(int(swap_size/page_size)):
         if swap[i].pid==exit.pid and swap[i].vpn == exit.vpn:
             swap[i] = entry
@@ -88,7 +89,7 @@ def entry_to_be_expelled(mem_type):
     if mem_type==1:
         mem_structure=tlb
         size = int(tlb_size)
-    else: # 
+    else:# 
         mem_structure=ram
         size = int(ram_size/page_size)
     #print(mem_structure[0])
@@ -101,10 +102,17 @@ def entry_to_be_expelled(mem_type):
     # find the one which'll not be accessed soon
     # for each element i need to find when do i need this and remove the one needed too later
         temp = []
-        #if mem_type == 1: #TLB
+        for i in range(size):
+            if mem_type==1:#its tlb
+                if not(mem_structure[i][0].present and mem_structure[i][0].valid):#we have a entry no longer in ram
+                    return i
         for j in range(len(mem_structure)):
             flag = -1
-            for i in range(curr,size): # current is the index of current query made
+            for i in range(curr,n_queries): # current is the index of current query made
+                if proc_id not in proc_req.keys():
+                    continue
+                if query>=proc_req[proc_id]:
+                    continue
                 if mem_structure[j][0].pid == queries[i][0] and mem_structure[j][0].vpn == queries[i][1]:
                     flag = i
                     temp.append(flag)
@@ -144,9 +152,11 @@ def tlb_access(proc_id,query,time):
             if tlb_policy=="LRU":
                 tlb[i][1]=time
             if swap_policy=="LRU":
+                #print(tlb[i][0].ppn,tlb[1][0].ppn)
                 ram[tlb[i][0].ppn][1]=time
             elif ram[tlb[i][0].ppn][1]==-1:
                 ram[tlb[i][0].ppn][1]=time
+            print("TLB hit")
             return
     #not found in TLB
     ppn = mem_access(proc_id,query,time)#returns the ppn
@@ -162,11 +172,6 @@ def tlb_access(proc_id,query,time):
     else:
         #enter swapping policies here
         temp = entry_to_be_expelled(1)
-<<<<<<< HEAD
-        print(temp, " is temp")
-=======
-        #print(temp)
->>>>>>> 1b5573c03589f48abdb4326d550b725e0e925ae7
         tlb[temp] = [TE(query,ppn,proc_id),time]
         tlb[temp][0].valid=True
         tlb[temp][0].present=True
@@ -175,7 +180,7 @@ def tlb_access(proc_id,query,time):
 def mem_access(proc_id,query,time):
     #first we search the process table
     global swap_policy
-    print("memory accessed")
+    print("TLB miss, Main memory accessed")
     if proc_id not in page_table.keys():
         print(proc_id+"    "+"invalid process id")
         return -1
@@ -194,14 +199,16 @@ def mem_access(proc_id,query,time):
             ram[ppn][1] = time
         return page_table[proc_id][query].ppn
     else:#entry is in the swap space
+        print("Page fault occured, Swap memory will be accessed")
         expel = entry_to_be_expelled(2)
         temp = ram[expel][0]#temporarily storing entry to be expelled
-        exchange_in_swap(temp,page(proc_id,query))
-        ram[expel] = [page(proc_id,query),time]
+        exchange_in_swap(temp,page(query,proc_id))
+        ram[expel] = [page(query,proc_id),time]
+        #print(proc_id,query,expel)
         page_table[proc_id][query].ppn=expel
         page_table[proc_id][query].present=True
         page_table[proc_id][query].valid=True
-        print("swap")
+        return expel
 
 #def swap_access(proc_id,query)
 
@@ -209,19 +216,15 @@ page_size=2
 ram_size=12
 swap_size=12
 tlb_size=4
-<<<<<<< HEAD
-tlb_policy="OPTI"
-swap_policy="OPTI"
-=======
 tlb_policy="FIFO"
 swap_policy="LRU"
->>>>>>> 1b5573c03589f48abdb4326d550b725e0e925ae7
 proc_req=dict()
 alloted=dict()
 page_table=dict()
 tlbidx=0
 ramidx=0
 swapidx=0
+n_queries=0
        
 tlb=[[TE(-1,-1,-1),-1] for _ in range(tlb_size)]
 ram=[[page(-1,-1),-1] for _ in range(int(ram_size/page_size))]#changed array size to include each byte
@@ -252,24 +255,23 @@ if __name__=="__main__":
         procsize=int(a.split()[1])
         proc_req[proc_id]=procsize
         alloted[proc_id]=-1
-    time = 0
     file2=open("sample_access.txt","r")
-<<<<<<< HEAD
+    file3 = open("sample_access.txt","r")
     time=0
     curr = 0
-    queries = []    
-=======
->>>>>>> 1b5573c03589f48abdb4326d550b725e0e925ae7
+    queries = []
+    for a in file3.read().split('\n'):
+        n_queries+=1  
     for a in file2.read().split('\n'):
         time+=1
         curr += 1
         proc_id=int(a.split()[0])
         query=int(a.split()[1])
         if proc_id not in proc_req.keys():
-            print(a+"    "+"invalid process id")
+            print(a+"\n"+"invalid process id\n")
             continue
         if query>=proc_req[proc_id]:
-            print(a+"    "+"query element is beyond allocated process size")
+            print(a+"\n"+"query element is beyond allocated process size\n")
             continue
         if alloted[proc_id]==-1:
             allocate(proc_id,time)
@@ -277,16 +279,17 @@ if __name__=="__main__":
         queries.append([proc_id,query])
         print(queries[-1])
         tlb_access(proc_id,query,time)
-<<<<<<< HEAD
-    for t in tlb:
-        print(t[0].pid,t[0].vpn,t[1])
-=======
+        print("TLB structure")
         for t in tlb:
             print(t[0].pid,t[0].vpn,t[0].present,t[1])
->>>>>>> 1b5573c03589f48abdb4326d550b725e0e925ae7
-    print("RAM structure")
-    for r in ram:
-        print(r[0].pid,r[0].vpn, r[1])
+        print("RAM structure")
+        for r in ram:
+            print(r[0].pid,r[0].vpn, r[1])
+        print("\n")
+
+    #print("RAM structure")
+    #for r in ram:
+    #    print(r[0].pid,r[0].vpn, r[1])
     print("Swap structure")
     for s in swap:
         print(s.pid,s.vpn)
